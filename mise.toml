@@ -1,0 +1,26 @@
+# Each src/<name>/mise.toml declares that component's own tools (node, python, ...).
+# Install everything with: mise install --monorepo
+monorepo_root = true
+
+[monorepo]
+config_roots = ["src/*"]
+
+[env]
+# Lets plain `docker compose ...` work from the repo root.
+COMPOSE_FILE = "{{config_root}}/.config/docker-compose.yml"
+COMPOSE_PROJECT_NAME = "{{config_root | basename}}"
+# Where `mise run add-setup` takes components from (branch TEMPLATE_REF, default "templates").
+TEMPLATE_REPO = "{{ get_env(name='TEMPLATE_REPO', default='https://github.com/mateusz-cybulski/base-web.git') }}"
+
+[tools]
+# Repo-wide tools only.
+terraform = "1.16.6"
+lefthook = "2.2.2"
+
+[tasks.dev]
+description = "Run all services from .config/docker-compose.yml locally with hot reload"
+run = "docker compose up --build"
+
+[tasks.add-setup]
+description = "Creates service from the template, e.g. `mise run add-setup frontend/next` (as src/frontend) or `mise run add-setup api/fastapi worker`"
+run = ".config/scripts/add-setup.sh"
