@@ -14,6 +14,7 @@
 #   3. Replaces __NAME__ with <name> in the component's compose.yml and lefthook.yml.
 #   4. Adds the component's compose.yml to .config/docker-compose.yml.
 #   5. Installs the tools from the component's mise.toml.
+#   6. Syncs Claude skills for the project's technologies (sync-agents.sh).
 #
 # Variables (set in mise.toml):
 #   TEMPLATE_REPO   Template repository URL or path.
@@ -54,14 +55,11 @@ dest="$REPO_ROOT/src/$name"
 # --- Fetch the template ------------------------------------------------------
 # A throwaway repository, so nothing is added to this project's git config.
 
-workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
-template() { git -C "$workdir" "$@"; }
-
+source "$REPO_ROOT/.config/scripts/lib/fetch-branch.sh"
 echo "Fetching $ref from $repo"
-template init -q
-template fetch -q --depth 1 "$repo" "$ref" 2>/dev/null ||
-  fail "cannot fetch branch '$ref' from $repo (does the branch exist and do you have access?)"
+fetch_branch "$repo" "$ref"
+workdir="$FETCHED_DIR"
+template() { git -C "$workdir" "$@"; }
 
 list_components() {
   local group
@@ -106,6 +104,11 @@ if [[ -f "$dest/mise.toml" ]]; then
   echo "Installing tools from src/$name/mise.toml"
   (cd "$REPO_ROOT" && mise install --monorepo)
 fi
+
+# --- Match Claude skills to the new technology -------------------------------
+
+"$REPO_ROOT/.config/scripts/sync-agents.sh" ||
+  echo "Warning: Claude skills not synced, run it later with: mise run agents" >&2
 
 echo
 echo "Done. Start it with: mise run dev"
