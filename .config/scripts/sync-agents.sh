@@ -3,15 +3,19 @@
 # Install the Claude Code skills and agents for a technology stack into .claude.
 #
 # Usage (through mise):
-#   mise run agents                    detect the stack from src/ and .config/
-#   mise run agents nextjs tailwind    use exactly this stack (plus "always")
+#   mise run agents                    detect the stack from src/ and .config/, then pick
+#   mise run agents nextjs tailwind    preselect this stack (plus "always"), then pick
+#   mise run agents --yes [stack...]   no picker: install exactly what the stack gives
 #   mise run agents --list             show the available technologies and exit
 #
 # What it does:
 #   1. Fetches the agents branch of the template repository (a copy of a .claude folder).
 #   2. Reads .claude/stacks.conf from it: which technologies exist and what each one installs.
-#   3. Copies the matching entries (e.g. .claude/skills/nextjs-best-practices) into this project.
-#   4. Removes entries it installed earlier that no longer match.
+#   3. Shows every skill/agent in a checklist (gum), with the stack's ones and the ones
+#      already installed preselected. Without a terminal or gum, or with --yes, it skips
+#      the checklist and uses the stack's entries.
+#   4. Copies the chosen entries (e.g. .claude/skills/nextjs-best-practices) into this project.
+#   5. Removes entries it installed earlier that were not chosen.
 #
 # Entries it did not install (listed in .claude/.managed) are never touched, so
 # project-specific skills and agents can live next to the synced ones.
@@ -32,11 +36,13 @@ ref="${AGENTS_REF:-agents}"
 [[ -n "$repo" ]] || { echo "Error: TEMPLATE_REPO is not set (see [env] in mise.toml)" >&2; exit 1; }
 
 list_only=false
+assume_yes=false
 requested=""
 for arg in "$@"; do
   case "$arg" in
     --list) list_only=true ;;
-    -*) echo "Usage: mise run agents [--list] [technology...]" >&2; exit 1 ;;
+    --yes | -y) assume_yes=true ;;
+    -*) echo "Usage: mise run agents [--list] [--yes] [technology...]" >&2; exit 1 ;;
     *) requested+=" $arg" ;;
   esac
 done
@@ -144,11 +150,52 @@ while read -r pattern rule_techs; do
   $found || echo "Warning: '$pattern' in $CONFIG_PATH matches nothing on $ref" >&2
 done <<<"$install_rules"
 
+managed=""
+[[ -f "$MANAGED_LIST" ]] && managed="$(tr '\n' ' ' <"$MANAGED_LIST")"
+
+# --- Pick ----------------------------------------------------------------------
+
+# Technologies an entry belongs to, from [install], e.g. "nextjs" for skills/nextjs-sitemap.
+entry_techs() {
+  local entry="$1" out="" pattern rule_techs tech
+  while read -r pattern rule_techs; do
+    [[ -n "$pattern" ]] || continue
+    # shellcheck disable=SC2053  # $pattern is a glob on purpose
+    [[ "$1" == $pattern ]] || continue
+    for tech in $rule_techs; do has "$out" "$tech" || out+=" $tech"; done
+  done <<<"$install_rules"
+  echo "${out# }"
+}
+
+if $assume_yes; then
+  :
+elif [[ ! -t 0 || ! -t 1 ]]; then
+  echo "No terminal: installing the stack's entries without asking."
+elif ! command -v gum >/dev/null; then
+  echo "gum not found (run: mise install): installing the stack's entries without asking."
+else
+  # One line per entry: "<entry>  <technologies>"; the entry is the first word.
+  items=()
+  preselected=""
+  for entry in $available; do
+    label="$(printf '%-36s %s' "$entry" "$(entry_techs "$entry")")"
+    items+=("$label")
+    if has "$wanted" "$entry" || has "$managed" "$entry"; then
+      preselected+="${preselected:+,}$label"
+    fi
+  done
+  chosen="$(gum choose --no-limit --height=20 \
+    --header="Space: toggle, Enter: install (stack: $techs)" \
+    --selected="$preselected" "${items[@]}")" || { echo "Cancelled, nothing changed."; exit 1; }
+  wanted=""
+  while IFS= read -r label; do
+    [[ -n "$label" ]] && wanted+=" ${label%% *}"
+  done <<<"$chosen"
+fi
+
 # --- Install -----------------------------------------------------------------
 
 mkdir -p "$CLAUDE_DIR"
-managed=""
-[[ -f "$MANAGED_LIST" ]] && managed="$(tr '\n' ' ' <"$MANAGED_LIST")"
 
 for entry in $managed; do
   if ! has "$wanted" "$entry"; then
