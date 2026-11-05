@@ -110,26 +110,20 @@ export type { Product } from "./model/product";
 - No `index.ts` inside segments of sliced layers (`entities/product/ui/index.ts` is redundant).
 - `shared` has one public API **per segment and component**, so importing one button does not pull the whole UI kit: `@/shared/ui/button`, `@/shared/lib/css`.
 
-## 6. Tailwind in FSD
+## 6. Where Tailwind code lives in FSD
 
-- Global CSS lives in `src/_app/styles/globals.css` and is imported once from the root layout:
+How to write the classes themselves is in `tailwind-best-practices`. This section only places them in the layers:
 
-```css
-/* src/_app/styles/globals.css */
-@import "tailwindcss";
+| What | Where |
+|---|---|
+| Tailwind entry CSS (`@import "tailwindcss"`, `@theme` tokens, `@custom-variant`, `@utility`) | `src/_app/styles/globals.css`, imported once from the root layout |
+| `cn()` helper | `src/shared/lib/css/`, imported as `@/shared/lib/css` |
+| Business-agnostic UI kit with variants (`button`, `input`, `dialog`) | `src/shared/ui/<component>/` |
+| A slice's classes | the `ui` segment of the slice that renders them |
+| Variant choice driven by business state | `model` returns the state (`status: "overdue"`); `ui` maps it to classes |
 
-@theme {
-  --color-brand: oklch(0.62 0.19 255);
-  --font-sans: var(--font-inter), system-ui, sans-serif;
-}
-```
-
-- Design tokens (colors, spacing, fonts, radii) are defined once in `@theme`. Components use the tokens (`bg-brand`, `text-muted`), not arbitrary values (`bg-[#3b82f6]`, `mt-[13px]`). An arbitrary value is a sign a token is missing: add the token.
-- `cn()` (`clsx` + `tailwind-merge`) lives in `src/shared/lib/css/` and is exported from `@/shared/lib/css`.
-- `shared/ui` holds the business-agnostic UI kit (`button`, `input`, `dialog`), with variants written once (e.g. `cva` or a variant map), not re-typed class strings in every slice.
-- Classes stay in the `ui` segment of the slice that renders them. No `.css` files per slice unless Tailwind cannot express it; no `@apply` component classes as a second styling system.
-- A component accepts `className` only for **placement** by its parent (margin, width, grid position) and merges it with `cn()`. A parent never overrides a child's internal look (colors, padding, typography) through `className`; add a variant to the child instead.
-- Dark mode and states through Tailwind variants (`dark:`, `hover:`, `aria-*:`, `data-*:`), not conditional class strings built in `model`.
+- A slice never defines its own tokens or global CSS: new tokens go to `_app/styles`.
+- A lower layer never styles a higher one: an entity card takes `className` for placement only; a widget or page does not reach into it to restyle it, it asks for a variant.
 
 ## 7. Lint the structure (Steiger)
 
