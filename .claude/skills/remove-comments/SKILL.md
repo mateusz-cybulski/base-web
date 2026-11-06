@@ -67,7 +67,7 @@ Run the checks for every area you touched, from the right directory, and fix any
 | `src/<name>` with `package.json` | `npx --no-install eslint --max-warnings=0 .` and `npx --no-install tsc --noEmit` (run in `src/<name>`, needs `npm ci` first) |
 | `.config/terraform` | `terraform fmt -check -recursive` and `terraform validate` (after `terraform init -backend=false`) |
 | Shell scripts | `bash -n <file>` |
-| YAML | `ruby -ryaml -e 'ARGV.each { \|f\| YAML.safe_load(File.read(f)) }' <files>` (PyYAML is usually not installed) |
+| YAML | `ruby -ryaml -e "ARGV.each(&->(path) { YAML.safe_load(File.read(path)) })" <files>` (PyYAML is usually not installed) |
 | TOML | `python3 -c 'import sys,tomllib; [tomllib.load(open(f,"rb")) for f in sys.argv[1:]]' <files>` |
 | Python | `python3 -m py_compile <files>` |
 

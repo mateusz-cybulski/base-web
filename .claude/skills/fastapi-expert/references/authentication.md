@@ -31,16 +31,17 @@ async def login(
 
 ```python
 from datetime import datetime, timedelta, UTC
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import jwt
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash.recommended()  # Argon2 (pip install "pwdlib[argon2]")
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return password_hash.verify(plain, hashed)
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 def create_access_token(
     sub: str,
@@ -79,7 +80,7 @@ async def get_current_user(
         user_id = int(payload.get("sub"))
         if payload.get("type") != "access":
             raise credentials_exception
-    except (JWTError, ValueError, TypeError):
+    except (InvalidTokenError, ValueError, TypeError):
         raise credentials_exception
 
     user = await get_user_db(db, user_id)
@@ -132,7 +133,7 @@ async def refresh_token(
         if payload.get("type") != "refresh":
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token type")
         user_id = int(payload.get("sub"))
-    except (JWTError, ValueError):
+    except (InvalidTokenError, ValueError):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token")
 
     user = await get_user_db(db, user_id)
@@ -153,7 +154,7 @@ async def refresh_token(
 | `OAuth2PasswordRequestForm` | Login form data |
 | `jwt.encode()` | Create JWT |
 | `jwt.decode()` | Verify JWT |
-| `pwd_context.hash()` | Hash password |
-| `pwd_context.verify()` | Check password |
+| `password_hash.hash()` | Hash password |
+| `password_hash.verify()` | Check password |
 | `Depends(get_current_user)` | Require auth |
 | `require_roles()` | Role-based access |

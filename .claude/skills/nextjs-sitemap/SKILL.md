@@ -150,6 +150,6 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 1. `cd src/<name> && npx --no-install eslint --max-warnings=0 . && npx --no-install tsc --noEmit`
 2. Run the app (`mise run dev`) and open `http://localhost:3000/sitemap.xml` and `/robots.txt`:
    - valid XML, every `<loc>` absolute,
-   - every listed URL returns 200: `curl -s localhost:3000/sitemap.xml | grep -o '<loc>[^<]*' | sed 's/<loc>//; s|https\?://[^/]*|http://localhost:3000|' | xargs -n1 curl -s -o /dev/null -w '%{http_code} %{url_effective}\n'`
+   - every listed URL returns 200: `curl -s localhost:3000/sitemap.xml | grep -o '<loc>[^<]*' | sed -E 's/<loc>//; s|https?://[^/]+|http://localhost:3000|' | xargs -n1 curl -s -o /dev/null -w '%{http_code} %{url_effective}\n'`
    - no excluded routes (`/api`, admin, `noindex` pages) and no duplicates.
 3. `npm run build` passes, and the build output lists `/sitemap.xml` and `/robots.txt` as dynamic, not static.

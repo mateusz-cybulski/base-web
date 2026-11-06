@@ -147,7 +147,7 @@ Run `npx steiger ./src`. Disable a rule for specific paths with `{ files: [...],
 ```yaml
     - name: <name>-steiger
       root: src/<name>/
-      glob: "src/**/*"
+      glob: "*.{js,jsx,ts,tsx}"
       run: npx --no-install steiger ./src
 ```
 

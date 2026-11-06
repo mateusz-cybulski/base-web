@@ -114,7 +114,8 @@ async def create_user(db: AsyncSession, payload: UserCreate) -> User:
 ```python
 # security.py
 from datetime import datetime, timedelta, timezone
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Annotated
@@ -134,7 +135,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str
         if subject is None:
             raise ValueError
         return subject
-    except (JWTError, ValueError):
+    except (InvalidTokenError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
 CurrentUser = Annotated[str, Depends(get_current_user)]

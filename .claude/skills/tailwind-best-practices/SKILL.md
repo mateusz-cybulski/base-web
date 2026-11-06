@@ -122,10 +122,12 @@ export function Button({ variant = "primary", className, ...props }: ButtonProps
 - Dark mode: `dark:` follows `prefers-color-scheme` by default. For a user toggle, the project overrides it once with `@custom-variant dark (&:where(.dark, .dark *));` (or a `data-theme` attribute) and sets the class on `<html>`. Better still, define tokens that switch with the theme so components do not need `dark:` at all:
 
 ```css
-@theme { --color-surface: var(--surface); }
+@theme inline { --color-surface: var(--surface); }
 :root { --surface: oklch(1 0 0); }
 .dark { --surface: oklch(0.2 0.02 255); }
 ```
+
+  `@theme inline` matters here: the utility then uses `var(--surface)` directly, so the value switches wherever `.dark` is set, not only on `<html>`.
 
 - Focus: `focus-visible:` rings/outlines on every interactive element. Never `outline-none` without a visible replacement.
 - State from ARIA and data attributes instead of extra props: `aria-expanded:rotate-180`, `aria-invalid:border-danger`, `data-[state=open]:block`, `group-hover:`, `peer-checked:`.
@@ -136,8 +138,9 @@ export function Button({ variant = "primary", className, ...props }: ButtonProps
 ## 6. Class detection and bundle size
 
 - Tailwind scans the project automatically, skipping `.gitignore`d files, `node_modules`, CSS and lockfiles.
-- Classes used only inside a package in `node_modules` (a shared UI library): add `@source "../node_modules/@acme/ui";`.
-- Exclude folders with `@source not "../legacy";`.
+- `@source` paths are relative to the CSS file that contains them. With the entry CSS in `src/<name>/src/_app/styles/globals.css`, the component root is `../../../`.
+- Classes used only inside a package in `node_modules` (a shared UI library): add `@source "../../../node_modules/@acme/ui";`.
+- Exclude folders with `@source not "../../legacy";` (here `src/<name>/src/legacy`).
 - Safelisting is `@source inline("...")` (the `safelist` config key is gone). Use it only for classes that really come from outside the source, e.g. a CMS: `@source inline("{hover:,}bg-red-{100..900..100}");`. Do not use it to rescue dynamic class names: fix them as in section 2.
 - `@theme static` only when the CSS variables must exist even if unused (e.g. read from JS).
 

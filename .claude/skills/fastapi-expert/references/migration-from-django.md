@@ -406,7 +406,7 @@ class Post(models.Model):
 # SQLAlchemy 2.0 models
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, Boolean, ForeignKey, Index
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 class Base(DeclarativeBase):
@@ -421,7 +421,7 @@ class User(Base):
     # Columns with type hints
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     # Relationships (analogous to related_name)
     posts: Mapped[List["Post"]] = relationship(back_populates="author")
@@ -437,7 +437,7 @@ class Post(Base):
     title: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text)
     author_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     published: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationship
@@ -562,9 +562,10 @@ class ProtectedViewSet(viewsets.ModelViewSet):
 # auth.py - FastAPI JWT implementation
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
+import jwt
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import Annotated
 
@@ -574,7 +575,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash.recommended()  # Argon2 (pip install "pwdlib[argon2]")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
@@ -589,17 +590,17 @@ class TokenData(BaseModel):
 
 # Helper functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return password_hash.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -620,7 +621,7 @@ async def get_current_user(
         if username is None:
             raise credentials_exception
         token_data = TokenData(username=username)
-    except JWTError:
+    except InvalidTokenError:
         raise credentials_exception
 
     result = await db.execute(
@@ -792,7 +793,7 @@ async def test_list_posts(client, auth_headers, db_session):
 
 Run Django and FastAPI side-by-side, migrating endpoints incrementally.
 
-```python
+```nginx
 # Nginx routing config
 location /api/v2/ {
     proxy_pass http://fastapi:8000;
@@ -955,17 +956,6 @@ async def create_user(user: UserCreate, db: AsyncSession):
     await db.refresh(db_user)  # Refresh to get DB-generated fields
     return db_user
 ```
-
----
-
-## Cross-Reference
-
-For comprehensive migration strategies and modernization patterns:
-- **Legacy Modernizer**: `../legacy-modernizer/references/migration-strategies.md`
-  - Strangler pattern implementation
-  - Feature flag strategies
-  - Rollback procedures
-  - Data migration pipelines
 
 ---
 
