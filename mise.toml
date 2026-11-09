@@ -9,6 +9,8 @@ config_roots = ["src/*"]
 # Lets plain `docker compose ...` work from the repo root.
 COMPOSE_FILE = "{{config_root}}/.config/docker-compose.yml"
 COMPOSE_PROJECT_NAME = "{{config_root | basename}}"
+# Every image is linux/amd64, locally too: Cloud Run runs only x86-64 and local containers match it.
+DOCKER_DEFAULT_PLATFORM = "linux/amd64"
 # Where `mise run add-setup` takes components from (branch TEMPLATE_REF, default "templates").
 TEMPLATE_REPO = "{{ get_env(name='TEMPLATE_REPO', default='https://github.com/mateusz-cybulski/base-web.git') }}"
 # Claude Code keeps this project's plugins and marketplaces in .claude/plugins instead of
