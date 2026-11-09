@@ -153,6 +153,9 @@ Load detailed guidance based on context:
 | Authentication | `references/authentication.md` | JWT, OAuth2, get_current_user |
 | Testing | `references/testing-async.md` | pytest-asyncio, httpx, fixtures |
 | Django Migration | `references/migration-from-django.md` | Migrating from Django/DRF to FastAPI |
+| **Project setup** | `references/project-setup.md` | **Always in this repo**: settings, lifespan, psycopg 3, Alembic, migrations on Cloud Run |
+
+In this repo `references/project-setup.md` wins over the other references where they differ: PostgreSQL through psycopg 3 (`postgresql+psycopg://`), tests against a disposable PostgreSQL rather than SQLite (`testing-async.md` uses SQLite, which behaves differently), and no migrations at app startup. Tooling (uv, ruff, mypy, pytest, Dockerfile) follows the `python-tooling` skill, deployment the `platform` skill.
 
 ## Constraints
 
