@@ -209,8 +209,17 @@ else
       preselected+="${preselected:+,}$label"
     fi
   done
-  chosen="$(gum choose --no-limit --height=20 \
-    --header="Space: toggle, Enter: install (stack: $techs)" \
+  # Fit the list to the terminal: gum cuts off whatever does not fit, with no hint that
+  # more entries exist. Leave room for the header, the page dots and the help line.
+  rows="$(stty size </dev/tty 2>/dev/null | cut -d' ' -f1)"
+  height="${#items[@]}"
+  if [[ "$rows" =~ ^[0-9]+$ ]] && ((rows - 5 < height)); then
+    height=$((rows - 5 > 3 ? rows - 5 : 3))
+  fi
+  page_hint=""
+  ((height < ${#items[@]})) && page_hint=", ←/→: more pages"
+  chosen="$(gum choose --no-limit --height="$height" \
+    --header="${#items[@]} entries. Space: toggle, Enter: install$page_hint (stack: $techs)" \
     --selected="$preselected" "${items[@]}")" || { echo "Cancelled, nothing changed."; exit 1; }
   wanted=""
   while IFS= read -r label; do
