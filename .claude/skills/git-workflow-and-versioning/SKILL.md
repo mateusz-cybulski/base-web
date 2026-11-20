@@ -1,9 +1,9 @@
 ---
 name: git-workflow-and-versioning
-description: "Use when committing, branching, splitting uncommitted work into separate commits, writing a commit message or a pull request description, pushing, merging, resolving conflicts, rewriting history, or cutting a release in this repo. Covers this repo's rules: commits and pushes only when the user asks, English git texts in plain sentences (no feat:/fix: prefixes), feat/ fix/ refactor/ branches merged with a merge commit, one logical change per commit, checks before committing, and force pushes only with the user's consent. For splitting a branch into several dependent pull requests see stacked-prs."
+description: "Use when committing, branching, splitting uncommitted work into separate commits, writing a commit message or a pull request description, pushing, merging, resolving conflicts, rewriting history, or cutting a release in this repo. Covers this repo's rules: commits and pushes only when the user asks, English git texts in plain sentences (no feat:/fix: prefixes), feat/ fix/ refactor/ branches merged with a merge commit one pull request at a time (the target branch's runs pass before the next merge), one logical change per commit, checks before committing, and force pushes only with the user's consent. For splitting a branch into several dependent pull requests see stacked-prs."
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   source: "Adapted from addyosmani/agent-skills git-workflow-and-versioning (MIT)"
 ---
 
@@ -75,6 +75,15 @@ main (deployed on every push)
 - Pull requests are merged on GitHub **with a merge commit**, so history shows the work happened on a branch. Never fast-forward or squash a feature branch into `main` locally. A local merge, when the user asks for one, is `git merge --no-ff -F <message file>`.
 - Branches may live for several steps (one per feature: data, kit, UI, save), but merge `main` in when it moves, and keep each step a commit.
 
+### Merging pull requests (when the user asks)
+
+**One pull request at a time, each only after the target branch is green again.** A workflow that cancels runs superseded by a newer commit (`cancel-in-progress`) leaves the earlier merge commits never checked when several PRs are merged in a row, and a push to `main` may also deploy.
+
+1. Wait for the PR's own checks: `gh pr checks <n> --watch`. Anything not `pass` stops the merge: report it.
+2. Merge: `gh pr merge <n> --merge` (never `--squash` or `--rebase`).
+3. Wait for **every** workflow run that merge started on the target branch, checks and deploy: `gh run list --branch <target> --commit <merge sha>`, then `gh run watch <id> --exit-status` for each. A failure stops the sequence: report it and do not merge the next PR.
+4. Only then merge the next PR, and check that it is still mergeable (the previous merge can conflict with it).
+
 ## 4. Splitting uncommitted work into commits
 
 When several changes have piled up:
@@ -145,3 +154,4 @@ The app deploys from `main` and has no versioned consumers, so it has no release
 - `feat:`-style prefixes, non-English text or names the project keeps out of git texts.
 - A commit that mixes a refactor with a feature, or code with skill updates.
 - A commit that does not pass the checks on its own.
+- Merging the next pull request before the previous merge's runs on the target branch (checks, deploy) have passed.
