@@ -3,7 +3,7 @@ name: nextjs-best-practices
 description: "Use when writing, changing or reviewing Next.js code in this repo: pages, layouts, components, route handlers, server actions (and calling them from buttons and dialogs with useAction and ConfirmActionDialog), proxy.ts, next.config, data fetching and caching, images, metadata, env vars. Next.js 16 App Router rules for components built from a Next template (e.g. src/frontend), deployed as a standalone container on Cloud Run, which must pass the component's ESLint and tsc lefthook checks."
 license: MIT
 metadata:
-  version: "1.10.0"
+  version: "1.11.0"
   next: "16"
 ---
 
@@ -63,6 +63,7 @@ return { form, fields };
 - A Server Action is a public endpoint. Validate input on the server (e.g. with a schema) and check authorization inside every action.
 - An id argument is typed with the entity's branded id (`id: GuestId`) so our own callers cannot pass the wrong one, **and** checked in the first line (`if (!isGuestId(id)) return { error: … }`), because a caller outside our code can send anything. The check is the boundary: keep it even though the type already says `GuestId`.
 - After a mutation, invalidate with the APIs from section 2 or `redirect()`. Do not rely on client-side refetching.
+- A Route Handler that takes a body bounds it **before** reading it: reject a `Content-Length` over the limit with 413, then read through a counting reader that stops at the limit. `await request.text()` / `request.json()` first and checking the length afterwards has already buffered whatever the caller sent.
 
 ### Forms with fields (Conform)
 
@@ -133,7 +134,7 @@ const copy = useAction(() => copyTemplateAction(template.id));
   - read them in code that runs per request (e.g. after `await connection()` from `next/server`, or inside a Server Action / Route Handler). In a statically prerendered page `process.env.API_URL` is read at build time, when it is not set.
 - `NEXT_PUBLIC_*` values are inlined at build time. They cannot come from Cloud Run runtime env. Pass runtime values to the client as props from a Server Component instead.
 - `serverRuntimeConfig` and `publicRuntimeConfig` are removed in Next 16. Use env vars.
-- Locally, `docker compose up --watch` runs `Dockerfile.dev` (`next dev`); Compose Watch syncs the source into the container and rebuilds on `package.json`/`package-lock.json` changes (see `platform`). `WATCHPACK_POLLING` is not needed: Turbopack does not read it. After moving or renaming files Turbopack can keep serving the old module ("Module not found" or an old component); `docker restart <project>-frontend-1` fixes it without rebuilding the image. Put local-only env in the component's `compose.yml`, not in code.
+- Locally, `docker compose up --watch` runs `Dockerfile.dev` (`next dev`); Compose Watch syncs the source into the container and rebuilds on `package.json`/`package-lock.json` changes (see `platform`). `WATCHPACK_POLLING` is not needed: Turbopack does not read it. After adding, moving or renaming files Turbopack can keep serving the old module ("Module not found" or an old component); `docker restart <project>-frontend-1` fixes it without rebuilding the image. Put local-only env in the component's `compose.yml`, not in code.
 
 ## 7. TypeScript and lint
 
@@ -157,4 +158,6 @@ const copy = useAction(() => copyTemplateAction(template.id));
 
 ## 8. Accessibility
 
-For UI changes, check them with the `accessibility-scan` skill and fix findings with `accessibility-fix`. Use semantic HTML (`<main>`, `<nav>`, `<button>`), set `lang` on `<html>`, give every `next/image` a meaningful `alt` (empty `alt=""` only for decorative images).
+Writing accessible UI follows `better-accessibility` (WCAG 2.2 AA: semantics, keyboard and focus, names, forms, announcements, alt text, motion, zoom); checking it uses the AccessLint skills (`accessibility-scan` for a changed page, `accessibility-inspect` for keyboard and focus, `accessibility-audit` for the whole app, `accessibility-fix`, `accessibility-diff`). A project that narrows the scope (e.g. desktop only) says so in its own skill. Next and React specifics:
+
+- **No `<script>` element inside a component.** React renders it but never runs it on a client render and warns ("Encountered a script tag…"). A script that must run before paint (a theme) goes into the root layout through `next/script` with `strategy="beforeInteractive"`.
