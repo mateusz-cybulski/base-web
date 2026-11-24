@@ -50,6 +50,10 @@ jobs:
       TF_VAR_GCP_DNS_PROJECT_ID: ${{ secrets.GCP_DNS_PROJECT_ID }}
       TF_VAR_GCP_ORG_ID: ${{ secrets.GCP_ORG_ID }}
       TF_VAR_GCP_FOLDER_ID: ${{ secrets.GCP_FOLDER_ID }}
+      # Stored in Secret Manager (secrets.tf) and given to services that list it in service.json.
+      TF_VAR_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Google accounts allowed to pull local_secrets with `mise run env` (comma-separated).
+      TF_VAR_DEVELOPER_EMAILS: ${{ secrets.DEVELOPER_EMAILS }}
     steps:
       - uses: actions/checkout@v4
 
