@@ -59,18 +59,18 @@ resource "google_secret_manager_secret_iam_member" "service" {
 
 # Developers read only the secrets some service marks as usable locally ("local_secrets" in its
 # service.json), with their own Google account, through `mise run env`; never DATABASE_URL & co.
-# The repository is public, so are its Actions logs: emails stay sensitive and resources are keyed
-# by a hash of the email.
+# A public repository's Actions logs are public: the members stay sensitive and resources are
+# keyed by a hash of the member.
 locals {
-  developer_emails = {
-    for email in split(",", var.DEVELOPER_EMAILS) : substr(sha256(trimspace(email)), 0, 12) => trimspace(email)
-    if trimspace(email) != ""
+  developers = {
+    for member in split(",", var.DEVELOPERS) : substr(sha256(trimspace(member)), 0, 12) => trimspace(member)
+    if trimspace(member) != ""
   }
   local_secret_ids = toset(flatten([
     for name, service in local.services : [for env_name in service.local_secrets : service.secrets[env_name]]
   ]))
   developer_secrets = {
-    for pair in setproduct(nonsensitive(keys(local.developer_emails)), local.local_secret_ids) :
+    for pair in setproduct(nonsensitive(keys(local.developers)), local.local_secret_ids) :
     "${pair[0]}/${pair[1]}" => { developer = pair[0], secret = pair[1] }
     if contains(local.managed_secrets, pair[1])
   }
@@ -82,5 +82,5 @@ resource "google_secret_manager_secret_iam_member" "developer" {
   project   = google_project.app_project.project_id
   secret_id = google_secret_manager_secret.managed[each.value.secret].secret_id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "user:${local.developer_emails[each.value.developer]}"
+  member    = local.developers[each.value.developer]
 }

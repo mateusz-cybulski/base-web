@@ -52,8 +52,8 @@ jobs:
       TF_VAR_GCP_FOLDER_ID: ${{ secrets.GCP_FOLDER_ID }}
       # Stored in Secret Manager (secrets.tf) and given to services that list it in service.json.
       TF_VAR_DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # Google accounts allowed to pull local_secrets with `mise run env` (comma-separated).
-      TF_VAR_DEVELOPER_EMAILS: ${{ secrets.DEVELOPER_EMAILS }}
+      # IAM members allowed to pull local_secrets with `mise run env`, e.g. group:developers@example.com.
+      TF_VAR_DEVELOPERS: ${{ secrets.DEVELOPERS }}
     steps:
       - uses: actions/checkout@v4
 

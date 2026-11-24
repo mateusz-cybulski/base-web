@@ -49,9 +49,9 @@ variable "GCP_DNS_MANAGED_ZONE_NAME" {
   }
 }
 
-variable "DEVELOPER_EMAILS" {
+variable "DEVELOPERS" {
   type        = string
-  description = "Comma-separated Google accounts that may read the secrets services list in local_secrets, for `mise run env` (optional, empty = nobody)"
+  description = "Comma-separated IAM members that may read the secrets services list in local_secrets, for `mise run env`: a Google group (group:developers@example.com) or single accounts (user:me@example.com). Optional, empty = nobody"
   default     = ""
   sensitive   = true
 }

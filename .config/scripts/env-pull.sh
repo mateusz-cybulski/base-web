@@ -73,8 +73,8 @@ echo "Project: $project"
 while read -r component env_name secret_id <&3; do
   env_file="src/$component/.env"
   if ! value="$(gcloud secrets versions access latest --secret="$secret_id" --project="$project")"; then
-    echo "Cannot read secret $secret_id. Your Google account must be in the DEVELOPER_EMAILS" >&2
-    echo "GitHub secret (comma-separated), and Terraform must have run since it was added." >&2
+    echo "Cannot read secret $secret_id. Your Google account (or a group it belongs to) must be" >&2
+    echo "in the DEVELOPERS GitHub secret, and Terraform must have run since it was added." >&2
     exit 1
   fi
   touch "$env_file"
