@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# Prepare a new project created from base-web: its GitHub secrets from the platform settings
-# (mise run platform-settings), the platform module's release, and, with --deploy, the first
-# deploy and the local .env files.
+# Prepare a new project created from base-web: its GitHub secrets, found in the platform's
+# Google Cloud (organization, billing account, DNS zone, Terraform state bucket, the deploy's
+# service account and Workload Identity provider), the platform module's release, and, with
+# --deploy, the first deploy and the local .env files.
 #
 # Usage (through mise), in the new repository after choosing its components (mise run add-setup):
 #   mise run setup            set the repository's secrets and the platform release
@@ -11,7 +12,7 @@
 # The repository may be private: its secrets are its own, not the organization's.
 #
 # Environment (set in mise.toml):
-#   PLATFORM_PROJECT   GCP project holding the platform settings.
+#   PLATFORM_PROJECT   GCP project with the DNS zone, the state bucket and the deploy's identity.
 
 set -euo pipefail
 
@@ -34,20 +35,60 @@ repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)" || {
 }
 echo "Repository: $repo"
 
-# 1. GitHub secrets from the platform settings; values go through stdin, never printed.
-settings="$(gcloud secrets versions access latest --secret=platform-settings --project="$project")" || {
-  echo "Cannot read the platform settings: run mise run platform-settings first." >&2
-  exit 1
+# 1. GitHub secrets, found in Google Cloud: they are identifiers, not passwords, so nothing is
+# typed or stored. A variable already set (e.g. in mise.local.toml) wins over what is found.
+# pick <NAME> <command...>: the variable NAME if already set, else the one line the command prints;
+# anything else stops setup and says what to set.
+pick() {
+  local name="$1"; shift
+  if [[ -n "${!name:-}" ]]; then echo "${!name}"; return; fi
+  local found
+  found="$("$@" 2>/dev/null | sed '/^$/d')" || true
+  if [[ -z "$found" || "$(wc -l <<<"$found" | tr -d ' ')" != 1 ]]; then
+    echo "Cannot tell $name (found: ${found:-nothing}). Set $name in mise.local.toml." >&2
+    return 1
+  fi
+  echo "$found"
 }
-# Through the environment, not arguments: a process list shows arguments.
-export PLATFORM_SETTINGS="$settings"
-names="$(python3 -c 'import json, os; print("\n".join(json.loads(os.environ["PLATFORM_SETTINGS"])))')"
-while read -r name; do
-  python3 -c 'import json, os, sys; sys.stdout.write(json.loads(os.environ["PLATFORM_SETTINGS"])[sys.argv[1]])' "$name" |
-    gh secret set "$name" --repo "$repo"
+
+# macOS ships bash 3.2: no associative arrays, so one function names each value.
+value_of() {
+  case "$1" in
+    GCP_DNS_PROJECT_ID) echo "$project" ;;
+    GCP_ORG_ID) pick GCP_ORG_ID gcloud organizations list --format='value(name)' ;;
+    GCP_BILLING_ACCOUNT_ID) pick GCP_BILLING_ACCOUNT_ID \
+      gcloud billing accounts list --filter=open=true --format='value(name)' ;;
+    GCP_FOLDER_ID) echo "${GCP_FOLDER_ID:-}" ;;  # empty: projects go straight under the organization
+    GCP_DNS_MANAGED_ZONE_NAME) pick GCP_DNS_MANAGED_ZONE_NAME \
+      gcloud dns managed-zones list --project="$project" --format='value(name)' ;;
+    GCP_TF_STATE_BUCKET) pick GCP_TF_STATE_BUCKET \
+      gcloud storage buckets list --project="$project" --filter='name~-tfstate$' --format='value(name)' ;;
+    GCP_SERVICE_ACCOUNT) pick GCP_SERVICE_ACCOUNT \
+      gcloud iam service-accounts list --project="$project" --filter='email~^gh-actions-ci@' --format='value(email)' ;;
+    GCP_WORKLOAD_IDENTITY_PROVIDER) pick GCP_WORKLOAD_IDENTITY_PROVIDER \
+      gcloud iam workload-identity-pools providers list --workload-identity-pool=github-actions \
+      --location=global --project="$project" --format='value(name)' ;;
+    # Who may pull local secrets: you, unless a group is set.
+    DEVELOPERS) echo "${DEVELOPERS:-user:$(gcloud config get-value account 2>/dev/null)}" ;;
+  esac
+}
+
+names="GCP_DNS_PROJECT_ID GCP_ORG_ID GCP_BILLING_ACCOUNT_ID GCP_FOLDER_ID GCP_DNS_MANAGED_ZONE_NAME
+  GCP_TF_STATE_BUCKET GCP_SERVICE_ACCOUNT GCP_WORKLOAD_IDENTITY_PROVIDER DEVELOPERS"
+# Everything is found before anything is set: an unclear value stops setup with no half-done repo.
+for name in $names; do
+  value_of "$name" >/dev/null || exit 1
+done
+for name in $names; do
+  value="$(value_of "$name")"
+  if [[ -z "$value" ]]; then
+    echo "  secret $name: empty, not set"
+    continue
+  fi
+  # Through stdin, not arguments: a process list shows arguments.
+  printf '%s' "$value" | gh secret set "$name" --repo "$repo"
   echo "  secret $name"
-done <<<"$names"
-unset PLATFORM_SETTINGS
+done
 
 # 2. The platform module at the latest release (replaces the template's PLATFORM_REF).
 .config/scripts/platform-update.sh

@@ -13,7 +13,7 @@ COMPOSE_PROJECT_NAME = "{{config_root | basename}}"
 DOCKER_DEFAULT_PLATFORM = "linux/amd64"
 # Where `mise run add-setup` takes components from (branch TEMPLATE_REF, default "templates").
 TEMPLATE_REPO = "{{ get_env(name='TEMPLATE_REPO', default='https://github.com/mateusz-cybulski/base-web.git') }}"
-# GCP project holding the settings all projects share (mise run platform-settings, setup).
+# GCP project with the DNS zone, the Terraform state bucket and the deploy's identity (mise run setup).
 PLATFORM_PROJECT = "{{ get_env(name='PLATFORM_PROJECT', default='vocal-gist-508519-h7') }}"
 # Claude Code keeps this project's plugins and marketplaces in .claude/plugins instead of
 # ~/.claude/plugins. Must be absolute and must come from the process environment: the `env`
@@ -36,12 +36,8 @@ description = "Write each component's local .env with the secrets its service.js
 run = ".config/scripts/env-pull.sh"
 
 [tasks.setup]
-description = "Prepare a new project: its GitHub secrets from the platform settings and the platform release (--deploy: also push, wait for the first deploy, write .env)"
+description = "Prepare a new project: its GitHub secrets found in the platform's Google Cloud, and the platform release (--deploy: also push, wait for the first deploy, write .env)"
 run = ".config/scripts/setup.sh"
-
-[tasks.platform-settings]
-description = "Store the settings all projects share in the platform project's Secret Manager, from a file you fill in (--names: list them)"
-run = ".config/scripts/platform-settings.sh"
 
 [tasks.platform]
 description = "Update the project to a base-web release (Terraform module ref and the platform's own files), e.g. `mise run platform v1.2.0` (no argument: the latest; --list: show releases)"
