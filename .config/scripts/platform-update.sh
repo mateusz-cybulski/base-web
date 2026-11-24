@@ -32,6 +32,13 @@ MODULE_CALL=.config/terraform/main.tf
 REF_FILE=.config/platform-ref
 
 repo="${TEMPLATE_REPO:?TEMPLATE_REPO is not set (see [env] in mise.toml)}"
+# In base-web itself the files are the newest version: replacing them with a release would undo
+# unreleased work.
+origin="$(git remote get-url origin 2>/dev/null || true)"
+if [[ "${origin%.git}" == "${repo%.git}" ]]; then
+  echo "This is the template ($repo) itself; run mise run platform in a project." >&2
+  exit 1
+fi
 
 release_tags() {
   git ls-remote --tags --refs "$repo" 'v*' | sed 's#.*refs/tags/##' | sort -V
