@@ -49,6 +49,20 @@ variable "GCP_DNS_MANAGED_ZONE_NAME" {
   }
 }
 
+variable "DEVELOPERS" {
+  type        = string
+  description = "Comma-separated IAM members that may read the secrets services list in local_secrets, for `mise run env`: a Google group (group:developers@example.com) or single accounts (user:me@example.com). Optional, empty = nobody"
+  default     = ""
+  sensitive   = true
+}
+
+variable "DATABASE_URL" {
+  type        = string
+  description = "PostgreSQL URL for the services (postgresql+psycopg://...), stored in Secret Manager as \"database-url\" (optional, empty = no secret)"
+  default     = ""
+  sensitive   = true
+}
+
 variable "DNS_BASE_DOMAIN" {
   type        = string
   description = "Base domain under which app subdomains are created"

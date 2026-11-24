@@ -25,6 +25,8 @@ locals {
         memory        = "512Mi"
         max_instances = 2
         env           = {}
+        secrets       = {}
+        local_secrets = [] # read only by `mise run env`
         roles         = []
       },
       jsondecode(fileexists("${local.repo_root}/src/${name}/service.json") ? file("${local.repo_root}/src/${name}/service.json") : "{}"),
@@ -33,6 +35,13 @@ locals {
         image  = "${var.GCP_REGION}-docker.pkg.dev/${google_project.app_project.project_id}/${google_artifact_registry_repository.app.repository_id}/${name}"
       },
     )
+  }
+
+  # service.json "secrets": { "ENV_NAME": "<secret id from secrets.tf>" }.
+  service_secrets = {
+    for pair in flatten([
+      for name, service in local.services : [for env_name, secret in service.secrets : { service = name, env = env_name, secret = secret }]
+    ]) : "${pair.service}/${pair.env}" => pair
   }
 
   service_roles = {
@@ -144,6 +153,20 @@ resource "google_cloud_run_v2_service" "service" {
           value = env.value
         }
       }
+
+      # Pinned to the current secret version: changing the value deploys a new revision.
+      dynamic "env" {
+        for_each = { for env_name, secret in each.value.secrets : env_name => secret if contains(local.managed_secrets, secret) }
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.managed[env.value].secret_id
+              version = google_secret_manager_secret_version.managed[env.value].version
+            }
+          }
+        }
+      }
     }
   }
 
@@ -152,9 +175,17 @@ resource "google_cloud_run_v2_service" "service" {
       condition     = can(regex("^[a-z][a-z0-9-]{0,47}[a-z0-9]$", each.key))
       error_message = "Directory src/${each.key} is not a valid Cloud Run service name (lowercase letters, digits and hyphens, starting with a letter)."
     }
+
+    precondition {
+      condition     = alltrue([for secret in values(each.value.secrets) : contains(local.managed_secrets, secret)])
+      error_message = "src/${each.key}/service.json uses secrets ${jsonencode(values(each.value.secrets))}, but only ${jsonencode(local.managed_secrets)} are set. Set the matching GitHub secret (see secrets.tf)."
+    }
   }
 
-  depends_on = [google_project_service.app_services]
+  depends_on = [
+    google_project_service.app_services,
+    google_secret_manager_secret_iam_member.service,
+  ]
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public" {
