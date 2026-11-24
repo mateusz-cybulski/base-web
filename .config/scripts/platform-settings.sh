@@ -30,9 +30,19 @@ SETTINGS=(
   DEVELOPERS
 )
 
+if ! gcloud services list --enabled --project="$project" --filter="config.name=secretmanager.googleapis.com" \
+  --format="value(config.name)" 2>/dev/null | grep -q .; then
+  echo "Secret Manager is not enabled in $project. Enable it once:" >&2
+  echo "  gcloud services enable secretmanager.googleapis.com --project=$project" >&2
+  exit 1
+fi
+
 if [[ "${1:-}" == "--names" ]]; then
-  gcloud secrets versions access latest --secret="$SECRET_ID" --project="$project" |
-    python3 -c 'import json, sys; print("\n".join(sorted(json.load(sys.stdin))))'
+  if ! stored="$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$project" 2>/dev/null)"; then
+    echo "No platform settings stored in $project yet: run mise run platform-settings." >&2
+    exit 1
+  fi
+  STORED="$stored" python3 -c 'import json, os; print("\n".join(sorted(json.loads(os.environ["STORED"]))))'
   exit 0
 fi
 
