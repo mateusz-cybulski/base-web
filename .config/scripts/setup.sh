@@ -49,8 +49,13 @@ fi
 pick() {
   local name="$1"; shift
   if [[ -n "${!name:-}" ]]; then echo "${!name}"; return; fi
-  local found
-  found="$("$@" 2>/dev/null | sed '/^$/d')" || true
+  local found attempt
+  # gcloud now and then answers with nothing: try again before calling it "nothing".
+  for attempt in 1 2 3; do
+    found="$("$@" 2>/dev/null | sed '/^$/d')" || true
+    [[ -n "$found" ]] && break
+    sleep 2
+  done
   if [[ -z "$found" || "$(wc -l <<<"$found" | tr -d ' ')" != 1 ]]; then
     echo "Cannot tell $name (found: ${found:-nothing}). Set $name in mise.local.toml." >&2
     return 1
