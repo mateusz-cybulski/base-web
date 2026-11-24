@@ -11,13 +11,13 @@ locals {
     "database-url" = var.DATABASE_URL
   }
   # Always present, but unknown until the first apply: never filtered by value.
-  # E.g. an API key Terraform creates: "maps-api-key" = google_apikeys_key.maps.key_string
-  generated_secrets = {}
+  # From the project's own resources, e.g. an API key it creates (module input generated_secrets).
+  generated_secrets = var.generated_secrets
   secret_values     = merge(local.provided_secrets, local.generated_secrets)
 
   managed_secrets = setunion(
     [for id, value in local.provided_secrets : id if nonsensitive(value != "")],
-    keys(local.generated_secrets),
+    nonsensitive(keys(local.generated_secrets)),
   )
 }
 

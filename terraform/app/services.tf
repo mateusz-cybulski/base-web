@@ -1,5 +1,5 @@
 locals {
-  repo_root = abspath("${path.module}/../..")
+  repo_root = abspath(var.repo_root)
 
   # Every src/<name>/Dockerfile becomes a Cloud Run service built from src/<name>,
   # optionally configured by src/<name>/service.json.
@@ -147,7 +147,7 @@ resource "google_cloud_run_v2_service" "service" {
       }
 
       dynamic "env" {
-        for_each = merge(local.common_env, each.value.env)
+        for_each = merge(local.common_env, lookup(var.extra_env, each.key, {}), each.value.env)
         content {
           name  = env.key
           value = env.value
