@@ -13,6 +13,7 @@
 #
 # Environment (set in mise.toml):
 #   PLATFORM_PROJECT   GCP project with the DNS zone, the state bucket and the deploy's identity.
+#   PLATFORM_REF       Optional: a base-web branch or tag instead of the latest release.
 
 set -euo pipefail
 
@@ -108,7 +109,8 @@ fi
 
 # 2. The platform module at the latest release (replaces the template's PLATFORM_REF). The copy of
 # the module the template brought along is not used: the project takes it by version.
-.config/scripts/platform-update.sh
+# PLATFORM_REF=<branch or tag> tries an unreleased platform; empty means the latest release.
+.config/scripts/platform-update.sh ${PLATFORM_REF:-}
 rm -rf terraform/app
 rmdir terraform 2>/dev/null || true
 
