@@ -36,7 +36,7 @@ description = "Write each component's local .env with the secrets its service.js
 run = ".config/scripts/env-pull.sh"
 
 [tasks.setup]
-description = "Prepare a new project: its GitHub secrets found in the platform's Google Cloud, and the platform release (--deploy: also push, wait for the first deploy, write .env)"
+description = "Prepare a new project: its GitHub variables found in the platform's Google Cloud, and the platform release (--deploy: also push, wait for the first deploy, write .env)"
 run = ".config/scripts/setup.sh"
 
 [tasks.platform]

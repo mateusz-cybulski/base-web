@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Prepare a new project created from base-web: its GitHub secrets, found in the platform's
+# Prepare a new project created from base-web: its GitHub variables, found in the platform's
 # Google Cloud (organization, billing account, DNS zone, Terraform state bucket, the deploy's
 # service account and Workload Identity provider), the platform module's release, and, with
 # --deploy, the first deploy and the local .env files.
@@ -9,7 +9,7 @@
 #   mise run setup            set the repository's secrets and the platform release
 #   mise run setup --deploy   also commit, push to main, wait for the deploy, then mise run env
 #
-# The repository may be private: its secrets are its own, not the organization's.
+# The repository may be private: its variables are its own, not the organization's.
 #
 # Environment (set in mise.toml):
 #   PLATFORM_PROJECT   GCP project with the DNS zone, the state bucket and the deploy's identity.
@@ -34,8 +34,14 @@ repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)" || {
   exit 1
 }
 echo "Repository: $repo"
+# base-web itself is the template, not a project: setting it up would give it a project's
+# settings and replace its newer scripts with a release.
+if [[ "$repo" == "$(basename "$(dirname "${TEMPLATE_REPO%.git}")")/$(basename "${TEMPLATE_REPO%.git}")" ]]; then
+  echo "This is the template ($repo) itself; run setup in a repository created from it." >&2
+  exit 1
+fi
 
-# 1. GitHub secrets, found in Google Cloud: they are identifiers, not passwords, so nothing is
+# 1. Shared settings, found in Google Cloud: they are identifiers, not passwords, so nothing is
 # typed or stored. A variable already set (e.g. in mise.local.toml) wins over what is found.
 # pick <NAME> <command...>: the variable NAME if already set, else the one line the command prints;
 # anything else stops setup and says what to set.
@@ -79,19 +85,32 @@ names="GCP_DNS_PROJECT_ID GCP_ORG_ID GCP_BILLING_ACCOUNT_ID GCP_FOLDER_ID GCP_DN
 for name in $names; do
   value_of "$name" >/dev/null || exit 1
 done
+# Repository variables: visible and editable in the repository settings. A variable is printed in
+# the Actions logs, so in a public repository DEVELOPERS (people's addresses) is a secret instead.
+visibility="$(gh repo view "$repo" --json visibility -q .visibility)"
 for name in $names; do
   value="$(value_of "$name")"
   if [[ -z "$value" ]]; then
-    echo "  secret $name: empty, not set"
+    echo "  $name: empty, not set"
     continue
   fi
+  kind=variable
+  if [[ "$name" == DEVELOPERS && "$visibility" == PUBLIC ]]; then
+    kind=secret
+  fi
   # Through stdin, not arguments: a process list shows arguments.
-  printf '%s' "$value" | gh secret set "$name" --repo "$repo"
-  echo "  secret $name"
+  printf '%s' "$value" | gh "$kind" set "$name" --repo "$repo"
+  echo "  $kind $name"
 done
+if [[ "$visibility" == PUBLIC ]]; then
+  echo "  (public repository: DEVELOPERS is a secret, so the Actions logs do not show addresses)"
+fi
 
-# 2. The platform module at the latest release (replaces the template's PLATFORM_REF).
+# 2. The platform module at the latest release (replaces the template's PLATFORM_REF). The copy of
+# the module the template brought along is not used: the project takes it by version.
 .config/scripts/platform-update.sh
+rm -rf terraform/app
+rmdir terraform 2>/dev/null || true
 
 if ! $deploy; then
   echo "Done. Commit and push to main to deploy, then run: mise run env"
