@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
     jwt_secret: SecretStr
     google_cloud_project: str | None = None  # set by the platform on Cloud Run
-    frontend_url: str = "http://localhost:3000"  # FRONTEND_URL on Cloud Run
+    # FRONTEND_URL exists only when the project has src/frontend; set it in compose.yml locally.
+    frontend_url: str | None = None
 
 
 @lru_cache
@@ -27,6 +28,24 @@ def get_settings() -> Settings:
 ```
 
 - Field names map to upper-case env vars (`database_url` <- `DATABASE_URL`). Platform-injected variables (`GOOGLE_CLOUD_PROJECT`, `<NAME>_URL`) fit straight in.
+- Another service's `<NAME>_URL` exists only if that service exists in the project (a backend-only project has no `FRONTEND_URL`). Make such fields `str | None = None` and switch the feature off when unset, e.g. CORS:
+
+```python
+# app/main.py
+from fastapi.middleware.cors import CORSMiddleware
+
+settings = get_settings()
+if settings.frontend_url:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_url],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+```
+
+  A URL the service cannot work without stays required (no default), so startup fails with a clear validation error. Never default to `http://localhost:...`: on Cloud Run that default would be used silently.
 - Secrets as `SecretStr`; read them with `.get_secret_value()` only where used. Secrets come from Secret Manager or the environment, never from `service.json`.
 - Use `Depends(get_settings)` in endpoints so tests can override it with `app.dependency_overrides`.
 

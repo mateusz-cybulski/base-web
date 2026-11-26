@@ -16,16 +16,19 @@ Generate the sitemap in code with `app/sitemap.ts` and reference it from `app/ro
 Every `<loc>` must be an absolute URL on the public custom domain.
 
 - Terraform injects each service's public URL as `<NAME>_URL`, where `<NAME>` is the `src/<name>` folder name in upper case with `-` changed to `_` (`.config/terraform/services.tf`). The `frontend` service is served at the bare domain (`https://<repo>.<domain>`); any other service gets `https://<name>.<repo>.<domain>`.
-- Read it in one helper, with a local fallback:
+- Read it in one helper. The component's own variable always exists on Cloud Run (the service exists, so it has a URL), so a missing value in production is a bug: fail loudly instead of indexing `localhost`. Only `next dev` falls back to localhost:
 
 ```ts
 // src/<name>/lib/site-url.ts
 export function siteUrl(): string {
-  return (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const url = process.env.FRONTEND_URL;
+  if (url) return url.replace(/\/$/, "");
+  if (process.env.NODE_ENV !== "production") return "http://localhost:3000";
+  throw new Error("FRONTEND_URL is not set");
 }
 ```
 
-  Use the env var matching the component's own folder name (`FRONTEND_URL` for `src/frontend`, `WEB_URL` for `src/web`).
+  Use the env var matching the component's own folder name (`FRONTEND_URL` for `src/frontend`, `WEB_URL` for `src/web`). Do not read other services' variables here: they exist only if those services exist (see `platform`).
 - Never use the `*.run.app` URL, `request.url` or the `Host` header as the base. The service is reachable on both domains, and only the custom domain should be indexed.
 - Never hard-code the domain: each project created from the template gets its own.
 

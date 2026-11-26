@@ -21,6 +21,18 @@ Facts below come from `.config/terraform/` (`services.tf`, `main.tf`, `variables
 - Each service is also reachable at its `*.run.app` URL (ingress is `INGRESS_TRAFFIC_ALL`). Use the custom domain everywhere (links, OAuth redirects, CORS, sitemaps); do not depend on `run.app`.
 - Renaming or removing `src/<name>` destroys that service, its domain mapping and DNS record, and creates new ones for the new name. A new domain mapping needs a managed certificate, which can take from minutes to an hour. Treat a rename as a migration, not a refactor.
 
+### Every service is optional
+
+This repo is a template: a project may have only a frontend, only a backend (API, worker), both, or no component yet. Infrastructure already handles every case, and code and skills must too.
+
+- Terraform, the workflow and compose have **no hard-coded list of services**: everything is `for_each` over `src/*/Dockerfile`. With no component, Terraform creates only the project and Artifact Registry. `mise run dev` with no component prints a hint instead of failing.
+- Never make the infrastructure depend on a specific service: no `google_cloud_run_v2_service.service["api"]`, no step that assumes `src/frontend` exists, no commented-out "example" services in Terraform or compose. Per-service settings go in that service's `service.json`; an optional piece of shared infrastructure (a database, a bucket, a queue) gets a `count`/`for_each` condition or is added only when a service needs it.
+- A service must start and work when the others do not exist. `<NAME>_URL` exists **only for services that exist** in this project (section 6), so treat every other service's URL as optional configuration:
+  - the feature that needs it is off when it is missing (e.g. no CORS origin when there is no frontend, no "API status" widget without an API), or
+  - the service fails at startup with a clear message naming the variable, if it cannot work at all without it.
+  Never fall back to a `localhost` default that would silently be used on Cloud Run.
+- Backend without a frontend: the backend gets `<name>.<repo>.<base>` and nothing is served on the bare domain. That is fine; do not create an empty `src/frontend` to fill it.
+
 ## 2. Adding a component
 
 - From a template: `mise run add-setup <group>/<template> [name]` (templates live on the `templates` branch; the name defaults to the group, e.g. `frontend/next` -> `src/frontend`). It copies the template, replaces `__NAME__` in `compose.yml` and `lefthook.yml`, adds the compose file to `.config/docker-compose.yml`, installs the component's mise tools and offers matching Claude skills.
@@ -79,7 +91,7 @@ Optional per-service overrides, merged over these defaults:
 ## 6. Environment every service gets
 
 - `GOOGLE_CLOUD_PROJECT`: the project ID.
-- `<NAME>_URL` for **every** service (folder name upper-cased, `-` -> `_`): `FRONTEND_URL`, `API_URL`, `MY_WORKER_URL`, each `https://<its domain>`. Use these to call other services; never hard-code domains, they differ per project.
+- `<NAME>_URL` for **every service that exists in this project** (folder name upper-cased, `-` -> `_`), e.g. `FRONTEND_URL`, `API_URL`, `MY_WORKER_URL`, each `https://<its domain>`. Use these to call other services; never hard-code domains, they differ per project. A service that is not there has no variable, so read others' URLs as optional (section 1, "Every service is optional"). Adding a service later adds its variable to all services on the next deploy.
 - Plus the service's own `service.json` `env`.
 - These exist only at runtime on Cloud Run, not during `docker build`. Code that reads them must run at request or startup time, not at build time.
 - Google APIs authenticate with Application Default Credentials: on Cloud Run that is the service account `run-<name>`; locally it is your `gcloud auth application-default login` credentials mounted into the container (see section 7). Never ship key files.
@@ -128,7 +140,7 @@ services:
 1. Folder name valid and intentional (`frontend` for the main site); rename = new domain.
 2. `Dockerfile` listens on `$PORT`, non-root, builds for `linux/amd64`, has a `.dockerignore`.
 3. `service.json` only if defaults do not fit; no secrets in it; minimal `roles`.
-4. Other services addressed through `<NAME>_URL`, read at runtime.
+4. Other services addressed through `<NAME>_URL`, read at runtime, and optional: the service works (or fails with a clear message) when they do not exist; no `localhost` fallback in production.
 5. `compose.yml` + `Dockerfile.dev` work with `mise run dev`; compose file listed in `.config/docker-compose.yml`.
 6. `lefthook.yml` jobs pass, and the component has a job in `.github/workflows/checks.yml`; `mise run agents` run for the new stack.
-7. New GCP APIs or resources added to Terraform before code depends on them.
+7. New GCP APIs or resources added to Terraform before code depends on them, without assuming any particular service exists.

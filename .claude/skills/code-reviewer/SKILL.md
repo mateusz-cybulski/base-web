@@ -61,6 +61,7 @@ Go file by file. For each change ask "what input, state or timing makes this wro
 4. **Data and state**: migrations that lock or drop data, non-backward-compatible schema or API changes, cache not invalidated, writes outside a transaction that must be atomic, race between check and use.
 5. **Concurrency and resources**: shared mutable state, missing locks, connections, files or listeners not closed, unbounded queues, loops or memory, N+1 queries, work moved onto a hot path.
 6. **Contracts**: public API, CLI flags, event payloads, file formats or DB columns renamed or retyped without updating every consumer.
+   - **Optional services** (project rule, see the `platform` skill): a project may have only a frontend, only a backend or neither. Report code that requires another service's `<NAME>_URL` without a clear error when it is missing, a `localhost` fallback that would be used on Cloud Run, and Terraform, workflow or compose changes that refer to a specific service (`["api"]`, `src/frontend/...`) instead of iterating over `src/*`.
 7. **Tests**: the change has no test where one is cheap, or the test does not exercise the new path.
 8. **Abbreviated names** (project rule, see below).
 9. **Names and constants** (`clean-code`): names made of a bare number or shape (`Text300`), a rule-carrying literal repeated in several places (a length on the column and again in the schema), related constants kept in a string-keyed dictionary instead of a typed namespace.
