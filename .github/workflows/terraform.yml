@@ -142,7 +142,12 @@ jobs:
             echo "### Infrastructure"
             echo "Project: \`$project_id\`"
             echo
-            echo "| Service | URL |"
-            echo "|---|---|"
-            jq -r 'to_entries[] | "| \(.key) | \(.value) |"' <<<"$service_urls"
+            if [[ "$(jq 'length' <<<"$service_urls")" == 0 ]]; then
+              # Valid: the project exists, services come with src/<name>/Dockerfile.
+              echo "No services yet: add a component with a Dockerfile under src/."
+            else
+              echo "| Service | URL |"
+              echo "|---|---|"
+              jq -r 'to_entries[] | "| \(.key) | \(.value) |"' <<<"$service_urls"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

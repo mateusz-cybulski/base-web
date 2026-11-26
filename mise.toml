@@ -29,7 +29,16 @@ gum = "2.0.2"
 
 [tasks.dev]
 description = "Run all services from .config/docker-compose.yml locally; code changes reload, dependency and migration changes rebuild (compose watch)"
-run = "docker compose up --build --watch"
+# A project may have only a frontend, only a backend, or nothing yet: with no component
+# docker compose fails with "empty compose file", so explain instead.
+run = """
+set -- src/*/compose.yml
+if [ ! -e "$1" ]; then
+  echo "No components in src/ yet. Add one with: mise run add-setup <group>/<template>"
+  exit 0
+fi
+docker compose up --build --watch
+"""
 
 [tasks.env]
 description = "Write each component's local .env with the secrets its service.json lists in local_secrets, from Secret Manager with your gcloud login (--dry-run: only list them)"
