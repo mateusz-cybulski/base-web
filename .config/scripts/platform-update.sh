@@ -26,6 +26,7 @@ PLATFORM_FILES=(
   .config/terraform/variables.tf
   .config/terraform/outputs.tf
   .config/terraform/moved.tf
+  .config/terraform/main.tf
   .github/workflows/terraform.yml
 )
 MODULE_CALL=.config/terraform/main.tf
@@ -58,10 +59,16 @@ for path in "${PLATFORM_FILES[@]}"; do
   git -C "$FETCHED_DIR" archive FETCH_HEAD "$path" | tar -x -C "$REPO_ROOT"
 done
 
-# Only the module's ref changes in main.tf: the variables passed to it are the project's.
+# The project's own file: created from the template when missing, never replaced.
+if [[ ! -f .config/terraform/project.tf ]]; then
+  git -C "$FETCHED_DIR" archive FETCH_HEAD .config/terraform/project.tf | tar -x -C "$REPO_ROOT"
+  echo "Created .config/terraform/project.tf: move your module inputs there (generated_secrets, extra_env, extra_services_to_enable)."
+fi
+
+# main.tf comes with the release's placeholder: point it at the release.
 sed -i.bak -E "s#(base-web\.git//terraform/app\?ref=)[^\"]*#\1$ref#" "$MODULE_CALL" && rm "$MODULE_CALL.bak"
 echo "$ref" >"$REF_FILE"
 
 echo "Platform: $ref"
-git status --short -- "${PLATFORM_FILES[@]}" "$MODULE_CALL" "$REF_FILE"
-echo "Review with git diff, then commit. A new module input may need a value in $MODULE_CALL."
+git status --short -- "${PLATFORM_FILES[@]}" .config/terraform/project.tf "$REF_FILE"
+echo "Review with git diff, then commit."
