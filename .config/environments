@@ -1,0 +1,3 @@
+# The environments of this project, in deploy order: `prod` alone, or `dev test prod`.
+# A push to main deploys the first; each next one is promoted from the one before it.
+prod

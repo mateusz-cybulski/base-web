@@ -17,3 +17,14 @@ output "service_urls" {
   description = "Public URL of every deployed service"
   value       = module.app.service_urls
 }
+
+output "image_project" {
+  description = "Project whose registry holds the images this environment runs"
+  value       = module.app.image_project
+}
+
+output "image_tag" {
+  description = "Tag (commit) of the images this environment runs"
+  value       = module.app.image_tag
+}
+

@@ -1,7 +1,10 @@
 name: Infrastructure
 
-# Pull requests: check and plan, never modify anything.
-# Push to main: create or update everything (GCP project, images, Cloud Run, domains).
+# Pull requests: check and plan the first environment, never modify anything.
+# Push to main: deploy the first environment of .config/environments (dev, or prod alone): build the
+# images, create or update everything (GCP project, Cloud Run, domains).
+# Run manually with promote_to (test, prod): deploy what the environment before it runs, the same
+# commit and the same images, never skipping one (dev -> test -> prod).
 
 on:
   push:
@@ -15,6 +18,12 @@ on:
       - "mise.toml"
       - ".github/workflows/terraform.yml"
   workflow_dispatch:
+    inputs:
+      promote_to:
+        description: "Environment to promote to (empty: deploy main to the first environment)"
+        type: choice
+        options: ["", test, prod]
+        default: ""
 
 permissions:
   contents: read
@@ -40,24 +49,54 @@ jobs:
       TF_INPUT: "0"
       # Terraform state location (backend config, not a Terraform variable).
       STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET || secrets.GCP_TF_STATE_BUCKET }}
-      STATE_PREFIX: apps/${{ github.event.repository.name }}
       # Shared settings come from repository variables (set by mise run setup, editable in the
       # repository settings); a secret of the same name is the fallback for older projects.
       # Terraform variables (see variables.tf). Unset optional secrets arrive as "",
       # which Terraform treats as not set.
       TF_VAR_GITHUB_REPO_NAME: ${{ github.event.repository.name }}
-      TF_VAR_IMAGE_TAG: ${{ github.sha }}
       TF_VAR_GCP_BILLING_ACCOUNT_ID: ${{ vars.GCP_BILLING_ACCOUNT_ID || secrets.GCP_BILLING_ACCOUNT_ID }}
       TF_VAR_GCP_DNS_MANAGED_ZONE_NAME: ${{ vars.GCP_DNS_MANAGED_ZONE_NAME || secrets.GCP_DNS_MANAGED_ZONE_NAME }}
       TF_VAR_GCP_DNS_PROJECT_ID: ${{ vars.GCP_DNS_PROJECT_ID || secrets.GCP_DNS_PROJECT_ID }}
       TF_VAR_GCP_ORG_ID: ${{ vars.GCP_ORG_ID || secrets.GCP_ORG_ID }}
       TF_VAR_GCP_FOLDER_ID: ${{ vars.GCP_FOLDER_ID || secrets.GCP_FOLDER_ID }}
-      # Stored in Secret Manager (secrets.tf) and given to services that list it in service.json.
-      TF_VAR_DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # IAM members allowed to pull local_secrets with `mise run env`, e.g. group:developers@example.com.
       TF_VAR_DEVELOPERS: ${{ vars.DEVELOPERS || secrets.DEVELOPERS }}
     steps:
       - uses: actions/checkout@v4
+
+      # prod state stays at apps/<repo> (as before environments); dev and test get their own.
+      - name: Choose the environment
+        id: env
+        working-directory: .
+        env:
+          PROMOTE_TO: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_to || '' }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          envs=($(grep -v '^#' .config/environments))
+          prefix() { [[ "$1" == prod ]] && echo "apps/$REPO" || echo "apps/$REPO-$1"; }
+          target="${envs[0]}"
+          source=""
+          if [[ -n "$PROMOTE_TO" ]]; then
+            for i in "${!envs[@]}"; do
+              if [[ "${envs[$i]}" == "$PROMOTE_TO" && "$i" -gt 0 ]]; then
+                target="$PROMOTE_TO"
+                source="${envs[$((i - 1))]}"
+              fi
+            done
+            [[ -n "$source" ]] || {
+              echo "::error::$PROMOTE_TO is not an environment after another in .config/environments (${envs[*]})"
+              exit 1
+            }
+          fi
+          {
+            echo "target=$target"
+            echo "target_upper=$(tr '[:lower:]' '[:upper:]' <<<"$target")"
+            echo "target_prefix=$(prefix "$target")"
+            echo "source=$source"
+            [[ -z "$source" ]] || echo "source_prefix=$(prefix "$source")"
+          } >> "$GITHUB_OUTPUT"
+          echo "TF_VAR_ENVIRONMENT=$target" >> "$GITHUB_ENV"
+          echo "Environment: $target${source:+ (promoted from $source)}"
 
       - uses: google-github-actions/auth@v2
         with:
@@ -74,19 +113,58 @@ jobs:
           terraform_version: ${{ steps.versions.outputs.terraform }}
           terraform_wrapper: false
 
+      # Promotion: the commit and the images the environment before it runs, from its state.
+      - name: Read the release to promote
+        id: release
+        if: steps.env.outputs.source != ''
+        env:
+          SOURCE: ${{ steps.env.outputs.source }}
+          SOURCE_PREFIX: ${{ steps.env.outputs.source_prefix }}
+        run: |
+          terraform init -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=$SOURCE_PREFIX" >/dev/null
+          tag="$(terraform output -raw image_tag 2>/dev/null || true)"
+          project="$(terraform output -raw image_project 2>/dev/null || true)"
+          [[ -n "$tag" && -n "$project" ]] || {
+            echo "::error::$SOURCE has no deployed release yet: deploy it first (dev from main, then promote in order)"
+            exit 1
+          }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+          rm -rf .terraform
+          echo "Promoting $tag from $SOURCE"
+
+      # The promoted commit's code (Terraform, migrations), not main's.
+      - uses: actions/checkout@v4
+        if: steps.env.outputs.source != ''
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Set the release
+        env:
+          TAG: ${{ steps.release.outputs.tag || github.sha }}
+          SOURCE_PROJECT: ${{ steps.release.outputs.project }}
+        run: |
+          echo "TF_VAR_IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "TF_VAR_IMAGE_SOURCE_PROJECT=$SOURCE_PROJECT" >> "$GITHUB_ENV"
+
       - name: Check formatting
         run: terraform fmt -check -recursive
 
       - name: Initialize
+        env:
+          TARGET_PREFIX: ${{ steps.env.outputs.target_prefix }}
         run: |
-          [[ -n "$STATE_BUCKET" ]] || { echo "::error::Secret GCP_TF_STATE_BUCKET is not set"; exit 1; }
-          terraform init -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=$STATE_PREFIX"
+          [[ -n "$STATE_BUCKET" ]] || { echo "::error::Variable GCP_TF_STATE_BUCKET is not set"; exit 1; }
+          terraform init -reconfigure -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=$TARGET_PREFIX"
 
       - name: Validate
         run: terraform validate
 
+      # Each environment's database: DATABASE_URL for prod, DATABASE_URL_DEV and _TEST for the others.
       - name: Plan
         if: github.event_name == 'pull_request'
+        env:
+          TF_VAR_DATABASE_URL: ${{ steps.env.outputs.target == 'prod' && secrets.DATABASE_URL || secrets[format('DATABASE_URL_{0}', steps.env.outputs.target_upper)] }}
         run: terraform plan
 
       # Migrations run before the new API revision is deployed, so new code always meets
@@ -103,9 +181,9 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && hashFiles('src/api/alembic.ini') != ''
         working-directory: src/api
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ steps.env.outputs.target == 'prod' && secrets.DATABASE_URL || secrets[format('DATABASE_URL_{0}', steps.env.outputs.target_upper)] }}
         run: |
-          [[ -n "$DATABASE_URL" ]] || { echo "::error::Secret DATABASE_URL is not set"; exit 1; }
+          [[ -n "$DATABASE_URL" ]] || { echo "::error::The secret with ${{ steps.env.outputs.target }}'s DATABASE_URL is not set"; exit 1; }
           if [[ -f migrate.sh ]]; then
             uv run --frozen --no-dev sh migrate.sh
           else
@@ -114,6 +192,8 @@ jobs:
 
       - name: Deploy
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          TF_VAR_DATABASE_URL: ${{ steps.env.outputs.target == 'prod' && secrets.DATABASE_URL || secrets[format('DATABASE_URL_{0}', steps.env.outputs.target_upper)] }}
         run: |
           # The project ID must be known before the main plan (google provider bug with
           # google_cloud_run_domain_mapping.metadata.namespace), so a new project gets its random
@@ -139,8 +219,8 @@ jobs:
 
           # Summary on the workflow run page.
           {
-            echo "### Infrastructure"
-            echo "Project: \`$project_id\`"
+            echo "### Infrastructure: ${{ steps.env.outputs.target }}"
+            echo "Project: \`$project_id\`, release \`$TF_VAR_IMAGE_TAG\`"
             echo
             echo "| Service | URL |"
             echo "|---|---|"

@@ -95,3 +95,16 @@ variable "IMAGE_TAG" {
   type        = string
   description = "Tag for built images (CI uses the commit SHA); a new value triggers rebuild and redeploy"
 }
+
+variable "ENVIRONMENT" {
+  type        = string
+  description = "prod, or dev or test in a project with all three (.config/environments); set by the workflow"
+  default     = "prod"
+}
+
+variable "IMAGE_SOURCE_PROJECT" {
+  type        = string
+  description = "Empty: build the images. Otherwise dev's project: promote its images (test, prod); set by the workflow"
+  default     = ""
+}
+

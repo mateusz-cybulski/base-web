@@ -4,7 +4,9 @@
 module "app" {
   source = "git::https://github.com/mateusz-cybulski/base-web.git//terraform/app?ref=PLATFORM_REF"
 
-  repo_root = "${path.root}/../.."
+  repo_root            = "${path.root}/../.."
+  environment          = var.ENVIRONMENT
+  image_source_project = var.IMAGE_SOURCE_PROJECT
 
   GITHUB_REPO_NAME          = var.GITHUB_REPO_NAME
   GCP_BILLING_ACCOUNT_ID    = var.GCP_BILLING_ACCOUNT_ID

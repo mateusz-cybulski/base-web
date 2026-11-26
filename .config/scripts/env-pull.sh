@@ -60,6 +60,9 @@ fi
 project="${GCP_PROJECT:-}"
 if [[ -z "$project" ]]; then
   repo="$(basename "$(git remote get-url origin 2>/dev/null || echo "$REPO_ROOT")" .git)"
+  # Local matches the first environment: <repo> when prod is the only one, else <repo>-dev.
+  first="$(grep -v '^#' .config/environments 2>/dev/null | tr -s ' \n' ' ' | cut -d' ' -f1)"
+  [[ -z "$first" || "$first" == prod ]] || repo="$repo-$first"
   project="$(gcloud projects list --filter="name=$repo AND lifecycleState=ACTIVE" --format="value(projectId)")"
   if [[ "$(wc -w <<<"$project")" -ne 1 ]]; then
     echo "Could not find exactly one active project named '$repo' (found: ${project:-none})." >&2

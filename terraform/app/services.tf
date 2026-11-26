@@ -93,7 +93,7 @@ resource "google_project_iam_member" "service" {
 }
 
 resource "docker_image" "service" {
-  for_each = local.services
+  for_each = local.builds_images ? local.services : {}
 
   name = "${each.value.image}:${var.IMAGE_TAG}"
 
@@ -105,7 +105,7 @@ resource "docker_image" "service" {
 }
 
 resource "docker_registry_image" "service" {
-  for_each = local.services
+  for_each = local.builds_images ? local.services : {}
 
   name          = docker_image.service[each.key].name
   keep_remotely = true
@@ -132,7 +132,7 @@ resource "google_cloud_run_v2_service" "service" {
     }
 
     containers {
-      image = "${each.value.image}@${docker_registry_image.service[each.key].sha256_digest}"
+      image = local.builds_images ? "${each.value.image}@${docker_registry_image.service[each.key].sha256_digest}" : "${local.source_images[each.key]}@${data.docker_registry_image.promoted[each.key].sha256_digest}"
 
       ports {
         container_port = each.value.port
@@ -185,6 +185,7 @@ resource "google_cloud_run_v2_service" "service" {
   depends_on = [
     google_project_service.app_services,
     google_secret_manager_secret_iam_member.service,
+    google_artifact_registry_repository_iam_member.promoted,
   ]
 }
 
@@ -224,3 +225,32 @@ resource "google_dns_record_set" "service" {
   ttl          = 300
   rrdatas      = ["ghs.googlehosted.com."]
 }
+
+# Promotion (test, prod in a project with dev): the images dev built, read from dev's registry by
+# this project's Cloud Run, and pinned to the digest dev deployed.
+locals {
+  builds_images = var.image_source_project == ""
+  source_images = {
+    for name in local.service_names : name => "${var.GCP_REGION}-docker.pkg.dev/${var.image_source_project}/${google_artifact_registry_repository.app.repository_id}/${name}"
+  }
+}
+
+data "docker_registry_image" "promoted" {
+  for_each = local.builds_images ? {} : local.services
+
+  name = "${local.source_images[each.key]}:${var.IMAGE_TAG}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "promoted" {
+  count = local.builds_images ? 0 : 1
+
+  project    = var.image_source_project
+  location   = var.GCP_REGION
+  repository = google_artifact_registry_repository.app.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:service-${google_project.app_project.number}@serverless-robot-prod.iam.gserviceaccount.com"
+
+  # Cloud Run's service agent exists once its API is enabled.
+  depends_on = [google_project_service.app_services]
+}
+

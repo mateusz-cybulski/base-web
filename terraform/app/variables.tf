@@ -119,3 +119,20 @@ variable "extra_services_to_enable" {
   default     = []
 }
 
+variable "environment" {
+  type        = string
+  description = "prod, or dev or test in a project with all three; prod keeps the plain project name and domain"
+  default     = "prod"
+
+  validation {
+    condition     = contains(["prod", "dev", "test"], var.environment)
+    error_message = "environment is prod, dev or test."
+  }
+}
+
+variable "image_source_project" {
+  type        = string
+  description = "Empty: build the images here. Otherwise the project (dev) whose registry holds them: this environment runs the same images, by digest, without building"
+  default     = ""
+}
+

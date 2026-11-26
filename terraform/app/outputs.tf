@@ -28,3 +28,18 @@ output "service_domains" {
   value       = local.service_domains
 }
 
+output "image_project" {
+  description = "Project whose registry holds the images this environment runs (its own, or dev's)"
+  value       = local.builds_images ? google_project.app_project.project_id : var.image_source_project
+}
+
+output "image_tag" {
+  description = "Tag (commit) of the images this environment runs; the next environment is promoted to it"
+  value       = var.IMAGE_TAG
+}
+
+output "environment" {
+  description = "prod, dev or test"
+  value       = var.environment
+}
+

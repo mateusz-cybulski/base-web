@@ -7,12 +7,15 @@ resource "random_string" "project_suffix" {
 locals {
   clean_name = trim(replace(lower(var.GITHUB_REPO_NAME), "/[^a-z0-9-]+/", "-"), "-")
 
-  # 25-char prefix + "-" + 4-char suffix = 30, the GCP project_id limit.
-  base_project_id = trim(substr(local.clean_name, 0, 25), "-")
+  # prod keeps the plain names; dev and test add the environment: <repo>-dev, dev.<repo>.<domain>.
+  environment_suffix = var.environment == "prod" ? "" : "-${var.environment}"
+
+  # Prefix + "-" + 4-char suffix = 30, the GCP project_id limit.
+  base_project_id = "${trim(substr(local.clean_name, 0, 25 - length(local.environment_suffix)), "-")}${local.environment_suffix}"
   project_id      = "${local.base_project_id}-${random_string.project_suffix.result}"
 
   dns_label   = trim(substr(local.clean_name, 0, 63), "-")
-  base_domain = "${local.dns_label}.${var.DNS_BASE_DOMAIN}"
+  base_domain = var.environment == "prod" ? "${local.dns_label}.${var.DNS_BASE_DOMAIN}" : "${var.environment}.${local.dns_label}.${var.DNS_BASE_DOMAIN}"
 
   # Empty optional variables mean "not set".
   org_id         = var.GCP_ORG_ID != "" ? var.GCP_ORG_ID : null
@@ -21,7 +24,7 @@ locals {
 }
 
 resource "google_project" "app_project" {
-  name            = substr(var.GITHUB_REPO_NAME, 0, 30)
+  name            = substr("${var.GITHUB_REPO_NAME}${local.environment_suffix}", 0, 30)
   project_id      = local.project_id
   billing_account = var.GCP_BILLING_ACCOUNT_ID
   org_id          = local.org_id
